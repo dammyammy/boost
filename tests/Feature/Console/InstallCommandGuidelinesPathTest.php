@@ -59,13 +59,8 @@ test('it preserves configured guidelines path in interactive mode', function ():
 test('it does not update config when guidelines path write fails', function (): void {
     $config = new Config;
 
-    $command = new class(
-        Mockery::mock(AgentsDetector::class),
-        $config,
-        Mockery::mock(Herd::class),
-        Mockery::mock(Sail::class),
-        Mockery::mock(Terminal::class),
-    ) extends InstallCommand {
+    $command = new class(Mockery::mock(AgentsDetector::class), $config, Mockery::mock(Herd::class), Mockery::mock(Sail::class), Mockery::mock(Terminal::class)) extends InstallCommand
+    {
         public function runStoreConfig(): void
         {
             $this->storeConfig();
