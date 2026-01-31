@@ -25,6 +25,34 @@ class GuidelineWriter
     /**
      * @return GuidelineWriter::NEW|GuidelineWriter::REPLACED|GuidelineWriter::FAILED|GuidelineWriter::NOOP
      */
+    public static function writeToPath(string $path, string $guidelines, bool $frontmatter = false): int
+    {
+        $agent = new class($path, $frontmatter) implements SupportsGuidelines
+        {
+            public function __construct(
+                private readonly string $path,
+                private readonly bool $frontmatter
+            ) {
+                //
+            }
+
+            public function guidelinesPath(): string
+            {
+                return $this->path;
+            }
+
+            public function frontmatter(): bool
+            {
+                return $this->frontmatter;
+            }
+        };
+
+        return (new self($agent))->write($guidelines);
+    }
+
+    /**
+     * @return GuidelineWriter::NEW|GuidelineWriter::REPLACED|GuidelineWriter::FAILED|GuidelineWriter::NOOP
+     */
     public function write(string $guidelines): int
     {
         if (empty($guidelines)) {
