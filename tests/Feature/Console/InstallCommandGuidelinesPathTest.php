@@ -21,13 +21,8 @@ test('it preserves configured guidelines path in interactive mode', function ():
     $config = new Config;
     $config->setGuidelinesPath('.ai/boost-guidelines.md');
 
-    $command = new class(
-        Mockery::mock(AgentsDetector::class),
-        $config,
-        Mockery::mock(Herd::class),
-        Mockery::mock(Sail::class),
-        Mockery::mock(Terminal::class),
-    ) extends InstallCommand {
+    $command = new class(Mockery::mock(AgentsDetector::class), $config, Mockery::mock(Herd::class), Mockery::mock(Sail::class), Mockery::mock(Terminal::class)) extends InstallCommand
+    {
         public function runStoreConfig(): void
         {
             $this->storeConfig();
