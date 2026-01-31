@@ -465,6 +465,7 @@ class InstallCommand extends Command
     protected function storeConfig(): void
     {
         $explicitMode = $this->isExplicitFlagMode();
+        $guidelinesPath = $this->resolvedGuidelinesPath();
 
         if (! $explicitMode) {
             $this->config->flush();
@@ -474,7 +475,7 @@ class InstallCommand extends Command
 
         if ($this->selectedBoostFeatures->contains('guidelines') && ! $this->guidelinesPathWriteFailed) {
             $this->config->setGuidelines(true);
-            $this->storeGuidelinesPath();
+            $this->storeGuidelinesPath($guidelinesPath, $explicitMode);
         }
 
         if ($this->selectedBoostFeatures->contains('skills')) {
@@ -493,12 +494,18 @@ class InstallCommand extends Command
         return $this->selectedBoostFeatures->contains('herd_mcp');
     }
 
-    protected function storeGuidelinesPath(): void
+    protected function storeGuidelinesPath(?string $guidelinesPath, bool $explicitMode): void
     {
         $requestedPath = $this->requestedGuidelinesPath();
 
         if ($requestedPath !== null) {
             $this->config->setGuidelinesPath($requestedPath);
+
+            return;
+        }
+
+        if (! $explicitMode && $guidelinesPath !== null) {
+            $this->config->setGuidelinesPath($guidelinesPath);
         }
     }
 
