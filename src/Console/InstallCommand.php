@@ -64,6 +64,8 @@ class InstallCommand extends Command
     /** @var array<int, string> */
     private array $installedSkillNames = [];
 
+    private bool $guidelinesPathWriteFailed = false;
+
     const MIN_TEST_COUNT = 6;
 
     public function __construct(
@@ -394,6 +396,7 @@ class InstallCommand extends Command
             try {
                 GuidelineWriter::writeToPath($resolvedGuidelinesPath, $composedAiGuidelines);
             } catch (Exception $exception) {
+                $this->guidelinesPathWriteFailed = true;
                 $this->error('Failed to write Boost guidelines file: '.$exception->getMessage());
 
                 return;
@@ -469,7 +472,7 @@ class InstallCommand extends Command
             $this->config->setPackages($this->selectedThirdPartyPackages->values()->toArray());
         }
 
-        if ($this->selectedBoostFeatures->contains('guidelines')) {
+        if ($this->selectedBoostFeatures->contains('guidelines') && ! $this->guidelinesPathWriteFailed) {
             $this->config->setGuidelines(true);
             $this->storeGuidelinesPath();
         }
