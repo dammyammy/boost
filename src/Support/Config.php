@@ -20,6 +20,26 @@ class Config
         $this->set('guidelines', $enabled);
     }
 
+    public function getGuidelinesPath(): ?string
+    {
+        $path = $this->get('guidelines_path');
+
+        if (! is_string($path)) {
+            return null;
+        }
+
+        $path = trim($path);
+
+        return $path !== '' ? $path : null;
+    }
+
+    public function setGuidelinesPath(?string $path): void
+    {
+        $path = is_string($path) ? trim($path) : null;
+
+        $this->set('guidelines_path', $path !== '' ? $path : null);
+    }
+
     /**
      * @return array<int, string>
      */

@@ -125,3 +125,30 @@ it('calls install command with both flags when guidelines and skills are enabled
 
     expect($command->handle($config))->toBe(0);
 });
+
+it('passes configured guidelines path to install command', function (): void {
+    $config = new Config;
+    $config->setAgents(['claude-code']);
+    $config->setGuidelines(true);
+    $config->setSkills([]);
+    $config->setGuidelinesPath('.ai/boost-guidelines.md');
+
+    $command = Mockery::mock(UpdateCommand::class)->makePartial();
+    $command->shouldReceive('callSilently')
+        ->once()
+        ->with(InstallCommand::class, [
+            '--no-interaction' => true,
+            '--guidelines' => true,
+            '--skills' => false,
+            '--path' => '.ai/boost-guidelines.md',
+        ])
+        ->andReturn(0);
+
+    $input = new ArrayInput([]);
+    $output = new OutputStyle($input, new BufferedOutput);
+
+    $command->setLaravel($this->app);
+    $command->setOutput($output);
+
+    expect($command->handle($config))->toBe(0);
+});

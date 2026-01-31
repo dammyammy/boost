@@ -20,6 +20,20 @@ it('may store and retrieve guidelines status', function (): void {
     expect($config->getGuidelines())->toBeFalse();
 });
 
+it('may store and retrieve guidelines path', function (): void {
+    $config = new Config;
+
+    expect($config->getGuidelinesPath())->toBeNull();
+
+    $config->setGuidelinesPath('.ai/boost-guidelines.md');
+
+    expect($config->getGuidelinesPath())->toBe('.ai/boost-guidelines.md');
+
+    $config->setGuidelinesPath(null);
+
+    expect($config->getGuidelinesPath())->toBeNull();
+});
+
 it('may store and retrieve agents', function (): void {
     $config = new Config;
 

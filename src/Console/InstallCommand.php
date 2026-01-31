@@ -39,7 +39,8 @@ class InstallCommand extends Command
     protected $signature = 'boost:install
         {--guidelines : Install AI guidelines}
         {--skills : Install agent skills}
-        {--mcp : Install MCP server configuration}';
+        {--mcp : Install MCP server configuration}
+        {--path= : Store Boost guidelines in a shared file}';
 
     /** @var Collection<int, Agent> */
     private Collection $selectedAgents;
@@ -62,6 +63,8 @@ class InstallCommand extends Command
 
     /** @var array<int, string> */
     private array $installedSkillNames = [];
+
+    private bool $guidelinesPathWriteFailed = false;
 
     const MIN_TEST_COUNT = 6;
 
@@ -174,14 +177,20 @@ class InstallCommand extends Command
             'mcp' => 'Boost MCP Server Configuration',
         ]);
 
-        $explicit = $featureLabels->keys()->filter(fn ($feature) => $this->option($feature));
+        $explicit = $featureLabels->keys()->filter(function (string $feature): bool {
+            if ($feature === 'guidelines') {
+                return (bool) $this->option('guidelines') || $this->requestedGuidelinesPath() !== null;
+            }
+
+            return (bool) $this->option($feature);
+        });
 
         if ($explicit->isNotEmpty()) {
             return $explicit->values();
         }
 
         $configValues = collect([
-            'guidelines' => $this->config->getGuidelines(),
+            'guidelines' => $this->config->getGuidelines() || $this->config->getGuidelinesPath() !== null,
             'skills' => $this->config->hasSkills(),
             'mcp' => $this->config->getMcp(),
         ]);
@@ -195,6 +204,54 @@ class InstallCommand extends Command
             required: true,
             hint: 'This will override the current guidelines, skills, and MCP configuration',
         ));
+    }
+
+    protected function requestedGuidelinesPath(): ?string
+    {
+        $path = $this->option('path');
+
+        if (! is_string($path)) {
+            return null;
+        }
+
+        $path = trim($path);
+
+        return $path !== '' ? $path : null;
+    }
+
+    protected function resolvedGuidelinesPath(): ?string
+    {
+        return $this->requestedGuidelinesPath() ?? $this->config->getGuidelinesPath();
+    }
+
+    protected function resolveGuidelinesPath(string $path): string
+    {
+        if ($this->isAbsolutePath($path)) {
+            return $path;
+        }
+
+        return base_path($path);
+    }
+
+    protected function isAbsolutePath(string $path): bool
+    {
+        if ($path === '') {
+            return false;
+        }
+
+        if ($path[0] === '/' || $path[0] === '\\') {
+            return true;
+        }
+
+        return (bool) preg_match('/^[A-Za-z]:[\\\\\\/]/', $path);
+    }
+
+    protected function buildGuidelinesReference(string $path): string
+    {
+        return implode("\n", [
+            "Laravel Boost guidelines are stored in `{$path}`.",
+            'Read that file when you need Laravel-specific guidance, and follow it closely.',
+        ]);
     }
 
     protected function configureMcpOptions(): void
@@ -330,13 +387,42 @@ class InstallCommand extends Command
         $composer = app(GuidelineComposer::class)->config($this->buildGuidelineConfig());
         $guidelines = $composer->guidelines();
         $composedAiGuidelines = $composer->compose();
+        $guidelinesPath = $this->resolvedGuidelinesPath();
+        $resolvedGuidelinesPath = $guidelinesPath !== null
+            ? $this->resolveGuidelinesPath($guidelinesPath)
+            : null;
+
+        if ($resolvedGuidelinesPath !== null) {
+            try {
+                GuidelineWriter::writeToPath($resolvedGuidelinesPath, $composedAiGuidelines);
+            } catch (Exception $exception) {
+                $this->guidelinesPathWriteFailed = true;
+                $this->error('Failed to write Boost guidelines file: '.$exception->getMessage());
+
+                return;
+            }
+        }
+
+        $reference = $guidelinesPath !== null
+            ? $this->buildGuidelinesReference($guidelinesPath)
+            : $composedAiGuidelines;
+        $headerMessage = $guidelinesPath !== null
+            ? sprintf('Linking %d guidelines to your selected agents', $guidelines->count())
+            : sprintf('Adding %d guidelines to your selected agents', $guidelines->count());
 
         $this->installFeature(
             agents: $guidelinesAgents,
             emptyMessage: 'No agents are selected for guideline installation.',
-            headerMessage: sprintf('Adding %d guidelines to your selected agents', $guidelines->count()),
+            headerMessage: $headerMessage,
             nameResolver: fn (Agent $agent): string => $agent->displayName(),
-            processor: fn (Agent&SupportsGuidelines $agent): int => (new GuidelineWriter($agent))->write($composedAiGuidelines),
+            processor: function (Agent&SupportsGuidelines $agent) use ($composedAiGuidelines, $reference, $resolvedGuidelinesPath): int {
+                $targetPath = $this->resolveGuidelinesPath($agent->guidelinesPath());
+                $content = $resolvedGuidelinesPath !== null && $resolvedGuidelinesPath === $targetPath
+                    ? $composedAiGuidelines
+                    : $reference;
+
+                return (new GuidelineWriter($agent))->write($content);
+            },
             featureName: 'guidelines',
             beforeProcess: fn () => grid($guidelines->map(fn ($guideline, string $key): string => $key.($guideline['custom'] ? '*' : ''))->sort()->values()->toArray()),
             withDelay: true,
@@ -379,6 +465,7 @@ class InstallCommand extends Command
     protected function storeConfig(): void
     {
         $explicitMode = $this->isExplicitFlagMode();
+        $guidelinesPath = $this->resolvedGuidelinesPath();
 
         if (! $explicitMode) {
             $this->config->flush();
@@ -386,8 +473,9 @@ class InstallCommand extends Command
             $this->config->setPackages($this->selectedThirdPartyPackages->values()->toArray());
         }
 
-        if ($this->selectedBoostFeatures->contains('guidelines')) {
+        if ($this->selectedBoostFeatures->contains('guidelines') && ! $this->guidelinesPathWriteFailed) {
             $this->config->setGuidelines(true);
+            $this->storeGuidelinesPath($guidelinesPath, $explicitMode);
         }
 
         if ($this->selectedBoostFeatures->contains('skills')) {
@@ -406,6 +494,21 @@ class InstallCommand extends Command
         return $this->selectedBoostFeatures->contains('herd_mcp');
     }
 
+    protected function storeGuidelinesPath(?string $guidelinesPath, bool $explicitMode): void
+    {
+        $requestedPath = $this->requestedGuidelinesPath();
+
+        if ($requestedPath !== null) {
+            $this->config->setGuidelinesPath($requestedPath);
+
+            return;
+        }
+
+        if (! $explicitMode && $guidelinesPath !== null) {
+            $this->config->setGuidelinesPath($guidelinesPath);
+        }
+    }
+
     protected function shouldUseSail(): bool
     {
         if ($this->selectedBoostFeatures->isEmpty()) {
@@ -418,6 +521,10 @@ class InstallCommand extends Command
     protected function isExplicitFlagMode(): bool
     {
         if ($this->option('guidelines')) {
+            return true;
+        }
+
+        if ($this->requestedGuidelinesPath() !== null) {
             return true;
         }
 
